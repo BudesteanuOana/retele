@@ -7,6 +7,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #define LOCALHOST "127.0.0.1"
 #define SERVER_PORT 8080
@@ -37,6 +38,61 @@ int calculateSha256Hash(const char* input, size_t inputLen, unsigned char* outpu
     }
 }
 
+/* perform AES ECB encryption on the given input using the given key */
+int aesEcbEncrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *ciphertext)
+{
+    EVP_CIPHER_CTX *ctx;
+
+    int len = 0;
+	int ret = 0;
+    int ciphertext_len;
+
+    /* Create and initialise the context */
+    if(!(ctx = EVP_CIPHER_CTX_new())){
+		printf("Can't create cipher context");
+	    EVP_CIPHER_CTX_free(ctx);
+		return 1;
+	}
+
+    /*
+     * Initialise the encryption operation.
+     * In this example we are using 256 bit AES (i.e. a 256 bit key).
+	 * The key used is the hash of the input.
+     */
+    if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_ecb(), NULL, key, NULL)){
+		printf("Can't init cipher operation");
+	    EVP_CIPHER_CTX_free(ctx);
+		return 1;
+	}
+
+    /*
+     * Provide the message to be encrypted, and obtain the encrypted output.
+     * EVP_EncryptUpdate can be called multiple times if necessary
+     */
+    if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)){
+		printf("Can't perform cipher operation");
+	    EVP_CIPHER_CTX_free(ctx);
+		return 1;
+	}
+    ciphertext_len = len;
+
+    /*
+     * Finalise the encryption. Further ciphertext bytes may be written at
+     * this stage.
+     */
+    if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)){
+		printf("Can't perform cipher operation");
+	    EVP_CIPHER_CTX_free(ctx);
+		return 1;
+	}
+    ciphertext_len += len;
+
+    /* Clean up */
+    EVP_CIPHER_CTX_free(ctx);
+
+    return ciphertext_len;
+}
+
 /*
     function used for reading input from incoming client connections
     and processing that input (calls calculateSha256Hash to provide
@@ -44,7 +100,8 @@ int calculateSha256Hash(const char* input, size_t inputLen, unsigned char* outpu
 */
 int process_request(int clientSocket) {
 	char buffer[BUFFER_SIZE];
-	ssize_t n;
+	unsigned char outBuffer[BUFFER_SIZE];
+	ssize_t n, cipherTextLen;
     int ret = 0;
 	while (true) {
         memset(buffer, 0, BUFFER_SIZE);
@@ -62,7 +119,8 @@ int process_request(int clientSocket) {
         unsigned char hash[SHA256_DIGEST_LENGTH];
         memset(hash, 0xFF, SHA256_DIGEST_LENGTH);
         ret = calculateSha256Hash(buffer, n, hash, SHA256_DIGEST_LENGTH);
-        if (send(clientSocket, hash, SHA256_DIGEST_LENGTH, NULL) < 0) {
+		cipherTextLen = aesEcbEncrypt((unsigned char*) buffer, n, hash, outBuffer);
+        if (send(clientSocket, outBuffer, cipherTextLen, NULL) < 0) {
             ret = 1;
 		    printf("Error sending hash to client %d\n", clientSocket);
         }

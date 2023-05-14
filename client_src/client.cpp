@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 using namespace std;
-#define SHA256_MSG_DIGEST_LEN 32
+#define BUFFER_SIZE 1024
 
 int binToHexText(unsigned char* bin, size_t binLen, char *hexText)
 {
@@ -70,24 +70,24 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	
-    ssize_t written = write(clientSocket, input, strlen(input)+1);
+    ssize_t written = write(clientSocket, input, strlen(input));
 	if (written < 0) {
 		printf("Cannot sent data to the server\n");
 		return 1;
 	}
 	
-    unsigned char buffer[SHA256_MSG_DIGEST_LEN];
-    char hash[SHA256_MSG_DIGEST_LEN * 2+1];
+    unsigned char buffer[BUFFER_SIZE];
+    char hexTextBuffer[BUFFER_SIZE * 2+1];
 
-    ssize_t n = read(clientSocket, buffer, SHA256_MSG_DIGEST_LEN);
+    ssize_t n = read(clientSocket, buffer, BUFFER_SIZE);
     if (n < 0) {
 		printf("Cannot read data from the server\n");
 		return 1;
 	}
 
-    binToHexText(buffer, SHA256_MSG_DIGEST_LEN, hash);
-    hash[sizeof(hash)] = '\0';
-    printf("Server replied with SHA256 hash of '%s': %s\n", input, hash);
+    binToHexText(buffer, n, hexTextBuffer);
+    hexTextBuffer[n*2] = '\0';
+    printf("Server response for '%s': %s\n", input, hexTextBuffer);
 
     printf("Closing connection\n");
 	ret = close(clientSocket);
